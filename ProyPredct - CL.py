@@ -30,24 +30,35 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. CONEXIÓN DIRECTA AL SERVIDOR (SIN DATOS FALSOS)
+# 3. CONEXIÓN DIRECTA AL SERVIDOR (A PRUEBA DE FALLOS)
 # ==========================================
 st.sidebar.header("⚙️ Configuración")
 url_api = st.sidebar.text_input("URL del Servidor Original", "https://worldcup26.ir/get/games")
 
-@st.cache_data(ttl=60)
+# Sin caché de Streamlit para forzar siempre la lectura de datos en tiempo real
 def obtener_datos_directos(url):
-    """Se conecta estrictamente al servidor proporcionado. Cero datos ficticios."""
+    """Se conecta y extrae datos detectando inteligentemente la estructura del JSON"""
     try:
         respuesta = requests.get(url, timeout=10)
         if respuesta.status_code == 200:
             datos_json = respuesta.json()
-            matches = datos_json.get('data', datos_json.get('matches', datos_json))
+            
+            # Sistema de extracción blindado (cubre listas puras o diccionarios)
+            if isinstance(datos_json, list):
+                matches = datos_json
+            elif isinstance(datos_json, dict):
+                matches = datos_json.get('data', datos_json.get('matches', datos_json.get('games', [])))
+            else:
+                matches = []
+                
             if isinstance(matches, list) and len(matches) > 0:
                 return matches, "🟢 Conectado al Servidor Oficial"
-        return [], f"🔴 Servidor respondió con error: {respuesta.status_code}"
+                
+            return [], "🔴 El servidor respondió bien (200), pero la tabla de partidos llegó vacía."
+            
+        return [], f"🔴 Error del Servidor: Código {respuesta.status_code}"
     except Exception as e:
-        return [], "🔴 Error crítico: No se pudo establecer conexión con el servidor."
+        return [], f"🔴 Error interno de lectura: {str(e)}"
 
 datos_raw, status = obtener_datos_directos(url_api)
 
@@ -55,7 +66,7 @@ if "🟢" in status:
     st.sidebar.success(status)
 else:
     st.sidebar.error(status)
-    st.error("La conexión con el servidor de datos ha fallado. La consola se pausará hasta recuperar la conexión.")
+    st.error("La conexión con el servidor ha fallado. La consola se pausará hasta recuperar la conexión.")
     st.stop() # Detiene la ejecución del resto de la página si no hay datos reales
 
 # ==========================================
@@ -120,6 +131,12 @@ st.markdown("Plataforma de análisis de datos conectada en tiempo real al servid
 
 # Selector de Partido
 st.subheader("📅 Simulador de Enfrentamientos")
+
+# Evitar error si la tabla está vacía
+if df.empty:
+    st.warning("El servidor se conectó, pero no envió partidos. Intenta más tarde.")
+    st.stop()
+
 sel_partido = st.selectbox("Selecciona un partido del servidor para procesar su predicción:", df['Partido'].tolist())
 info = df[df['Partido'] == sel_partido].iloc[0]
 

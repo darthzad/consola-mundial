@@ -23,37 +23,32 @@ st.markdown("""
     header { visibility: hidden; }
     .block-container { padding-top: 2rem; max-width: 1200px; }
     footer {visibility: hidden;}
-    /* Estilos para los expanders (acordeones) */
     div[data-testid="stExpander"] { background-color: #151a22; border: 1px solid #1f2937; border-radius: 12px; }
     div[data-testid="stExpander"] > summary { color: #ffffff; font-weight: bold; font-size: 16px; padding: 10px; }
     div[data-testid="stMetricValue"] { color: #2fe47a; }
     </style>
     """, unsafe_allow_html=True)
 
-# DICCIONARIO DE CÓDIGOS DE PAÍS (ISO 3166) PARA BANDERAS EN IMAGEN
-CODIGOS_PAISES = {
-    "Mexico": "mx", "South Africa": "za", "Argentina": "ar", "Brazil": "br",
-    "United States": "us", "Canada": "ca", "France": "fr", "England": "gb-eng",
-    "Spain": "es", "Germany": "de", "Italy": "it", "Portugal": "pt",
-    "Netherlands": "nl", "Belgium": "be", "Uruguay": "uy", "Colombia": "co",
-    "Chile": "cl", "Peru": "pe", "Japan": "jp", "South Korea": "kr",
-    "Australia": "au", "Morocco": "ma", "Senegal": "sn", "Egypt": "eg",
-    "Nigeria": "ng", "Saudi Arabia": "sa", "Iran": "ir", "Ecuador": "ec",
-    "Croatia": "hr", "Switzerland": "ch", "Denmark": "dk", "Sweden": "se",
-    "Poland": "pl", "Serbia": "rs", "Wales": "gb-wls", "Costa Rica": "cr",
-    "Panama": "pa", "Honduras": "hn", "Jamaica": "jm", "El Salvador": "sv",
-    "Guatemala": "gt", "Nicaragua": "ni", "Curaçao": "cw", "Haiti": "ht",
-    "Trinidad and Tobago": "tt", "Czechia": "cz", "Bosnia and Herz.": "ba",
-    "Paraguay": "py", "Scotland": "gb-sct"
+# DICCIONARIO DE BANDERAS (Emojis Nativos - La única forma compatible con los títulos de Streamlit)
+BANDERAS = {
+    "Mexico": "🇲🇽", "South Africa": "🇿🇦", "Argentina": "🇦🇷", "Brazil": "🇧🇷",
+    "United States": "🇺🇸", "Canada": "🇨🇦", "France": "🇫🇷", "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "Spain": "🇪🇸", "Germany": "🇩🇪", "Italy": "🇮🇹", "Portugal": "🇵🇹",
+    "Netherlands": "🇳🇱", "Belgium": "🇧🇪", "Uruguay": "🇺🇾", "Colombia": "🇨🇴",
+    "Chile": "🇨🇱", "Peru": "🇵🇪", "Japan": "🇯🇵", "South Korea": "🇰🇷",
+    "Australia": "🇦🇺", "Morocco": "🇲🇦", "Senegal": "🇸🇳", "Egypt": "🇪🇬",
+    "Nigeria": "🇳🇬", "Saudi Arabia": "🇸🇦", "Iran": "🇮🇷", "Ecuador": "🇪🇨",
+    "Croatia": "🇭🇷", "Switzerland": "🇨🇭", "Denmark": "🇩🇰", "Sweden": "🇸🇪",
+    "Poland": "🇵🇱", "Serbia": "🇷🇸", "Wales": "🏴󠁧󠁢󠁷󠁬󠁳󠁿", "Costa Rica": "🇨🇷",
+    "Panama": "🇵🇦", "Honduras": "🇭🇳", "Jamaica": "🇯🇲", "El Salvador": "🇸🇻",
+    "Guatemala": "🇬🇹", "Nicaragua": "🇳🇮", "Curaçao": "🇨🇼", "Haiti": "🇭🇹",
+    "Trinidad and Tobago": "🇹🇹", "Czechia": "🇨🇿", "Bosnia and Herz.": "🇧🇦",
+    "Paraguay": "🇵🇾", "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿", "Ivory Coast": "🇨🇮", "Tunisia": "🇹🇳",
+    "New Zealand": "🇳🇿", "Cape Verde": "🇨🇻"
 }
 
 def obtener_bandera(equipo):
-    """Extrae la bandera real como imagen PNG desde un servidor global CDN"""
-    codigo = CODIGOS_PAISES.get(equipo)
-    if codigo:
-        # Se inyecta un tag HTML con la imagen. 'w40' solicita una imagen optimizada y liviana.
-        return f'<img src="https://flagcdn.com/w40/{codigo}.png" style="width: 24px; vertical-align: middle; border-radius: 3px; box-shadow: 0 0 3px rgba(0,0,0,0.5);">'
-    return "🏳️"
+    return BANDERAS.get(equipo, "🏳️")
 
 # ==========================================
 # 3. MOTOR DE DATOS (SISTEMA ANTI-CAÍDAS)
@@ -178,14 +173,16 @@ if menu == "📡 Tablero en Vivo":
     st.markdown("---")
     
     # ------------------------------------------
-    # NUEVO: DASHBOARD DE ESTADÍSTICAS GLOBALES
+    # DASHBOARD DE ESTADÍSTICAS GLOBALES
     # ------------------------------------------
     st.subheader("📈 Rendimiento Global del Modelo")
     
     partidos_finalizados = df[df['Estado'] == "FINALIZADO"]
-    total_juegos = len(df)
+    
+    # CORRECCIÓN: Hardcodeamos los 104 partidos oficiales del formato Mundial 2026
+    total_juegos_oficiales = 104 
     juegos_listos = len(partidos_finalizados)
-    juegos_pendientes = total_juegos - juegos_listos
+    juegos_pendientes = total_juegos_oficiales - juegos_listos
     
     aciertos = 0
     for idx, row in partidos_finalizados.iterrows():
@@ -196,7 +193,7 @@ if menu == "📡 Tablero en Vivo":
     tasa_acierto = (aciertos / juegos_listos * 100) if juegos_listos > 0 else 0.0
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
-    kpi1.metric("Partidos Totales", total_juegos)
+    kpi1.metric("Partidos Totales", total_juegos_oficiales)
     kpi2.metric("Pendientes / En Vivo", juegos_pendientes)
     kpi3.metric("Juegos Analizados", juegos_listos)
     kpi4.metric("Precisión (1X2)", f"{tasa_acierto:.1f}%")
@@ -215,6 +212,7 @@ if menu == "📡 Tablero en Vivo":
         st.info("No hay partidos programados para hoy ni mañana.")
     else:
         for idx, row in partidos_agenda.iterrows():
+            # Volvemos a los emojis para que los títulos funcionen bien
             flag_l = obtener_bandera(row['Local'])
             flag_v = obtener_bandera(row['Visita'])
             titulo = f"{row['Fecha_Raw'][-5:]} | {flag_l} {row['Local']}  {row['G_L']} - {row['G_V']}  {row['Visita']} {flag_v}  ({row['Estado']})"
@@ -223,7 +221,6 @@ if menu == "📡 Tablero en Vivo":
                 xg_l, xg_v, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
                 prob_l, prob_e, prob_v = calcular_probabilidades_1x2(xg_l, xg_v)
                 
-                # Renderizado limpio sin errores HTML
                 st.markdown(f"<h4 style='text-align: center; color: #8b5cf6; font-style: italic;'>🎯 Marcador Predicho: {pred_l} - {pred_v}</h4>", unsafe_allow_html=True)
                 
                 c1, c2, c3 = st.columns(3)
@@ -231,7 +228,6 @@ if menu == "📡 Tablero en Vivo":
                 c2.metric("Prob. Empate", f"{prob_e:.1f}%")
                 c3.metric(f"XG - {row['Visita']}", f"{xg_v:.2f}")
                 
-                # Barra de probabilidades formateada a la izquierda (Sin espacios iniciales)
                 barra_html = f"""
 <div style="text-align: left; font-size: 10px; color: #6b7280; margin-bottom: 5px; margin-top: 15px;">PROBABILIDADES DE VICTORIA (1X2)</div>
 <div style="display: flex; width: 100%; height: 8px; border-radius: 4px; overflow: hidden;">
@@ -266,7 +262,6 @@ if menu == "📡 Tablero en Vivo":
             flag_l = obtener_bandera(row['Local'])
             flag_v = obtener_bandera(row['Visita'])
             
-            # HTML formateado a la izquierda
             tarjeta_historial = f"""
 <div style="background-color: #111827; border-left: 4px solid {color_borde}; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
 <div style="font-size: 12px; color: #9ca3af; margin-bottom: 5px;">{row['Fecha_Raw'][:10]} | {row['Grupo']}</div>

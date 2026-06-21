@@ -30,25 +30,30 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# DICCIONARIO DE BANDERAS
-BANDERAS = {
-    "Mexico": "🇲🇽", "South Africa": "🇿🇦", "Argentina": "🇦🇷", "Brazil": "🇧🇷",
-    "United States": "🇺🇸", "Canada": "🇨🇦", "France": "🇫🇷", "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
-    "Spain": "🇪🇸", "Germany": "🇩🇪", "Italy": "🇮🇹", "Portugal": "🇵🇹",
-    "Netherlands": "🇳🇱", "Belgium": "🇧🇪", "Uruguay": "🇺🇾", "Colombia": "🇨🇴",
-    "Chile": "🇨🇱", "Peru": "🇵🇪", "Japan": "🇯🇵", "South Korea": "🇰🇷",
-    "Australia": "🇦🇺", "Morocco": "🇲🇦", "Senegal": "🇸🇳", "Egypt": "🇪🇬",
-    "Nigeria": "🇳🇬", "Saudi Arabia": "🇸🇦", "Iran": "🇮🇷", "Ecuador": "🇪🇨",
-    "Croatia": "🇭🇷", "Switzerland": "🇨🇭", "Denmark": "🇩🇰", "Sweden": "🇸🇪",
-    "Poland": "🇵🇱", "Serbia": "🇷🇸", "Wales": "🏴󠁧󠁢󠁷󠁬󠁳󠁿", "Costa Rica": "🇨🇷",
-    "Panama": "🇵🇦", "Honduras": "🇭🇳", "Jamaica": "🇯🇲", "El Salvador": "🇸🇻",
-    "Guatemala": "🇬🇹", "Nicaragua": "🇳🇮", "Curaçao": "🇨🇼", "Haiti": "🇭🇹",
-    "Trinidad and Tobago": "🇹🇹", "Czechia": "🇨🇿", "Bosnia and Herz.": "🇧🇦",
-    "Paraguay": "🇵🇾", "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿"
+# DICCIONARIO DE CÓDIGOS DE PAÍS (ISO 3166) PARA BANDERAS EN IMAGEN
+CODIGOS_PAISES = {
+    "Mexico": "mx", "South Africa": "za", "Argentina": "ar", "Brazil": "br",
+    "United States": "us", "Canada": "ca", "France": "fr", "England": "gb-eng",
+    "Spain": "es", "Germany": "de", "Italy": "it", "Portugal": "pt",
+    "Netherlands": "nl", "Belgium": "be", "Uruguay": "uy", "Colombia": "co",
+    "Chile": "cl", "Peru": "pe", "Japan": "jp", "South Korea": "kr",
+    "Australia": "au", "Morocco": "ma", "Senegal": "sn", "Egypt": "eg",
+    "Nigeria": "ng", "Saudi Arabia": "sa", "Iran": "ir", "Ecuador": "ec",
+    "Croatia": "hr", "Switzerland": "ch", "Denmark": "dk", "Sweden": "se",
+    "Poland": "pl", "Serbia": "rs", "Wales": "gb-wls", "Costa Rica": "cr",
+    "Panama": "pa", "Honduras": "hn", "Jamaica": "jm", "El Salvador": "sv",
+    "Guatemala": "gt", "Nicaragua": "ni", "Curaçao": "cw", "Haiti": "ht",
+    "Trinidad and Tobago": "tt", "Czechia": "cz", "Bosnia and Herz.": "ba",
+    "Paraguay": "py", "Scotland": "gb-sct"
 }
 
 def obtener_bandera(equipo):
-    return BANDERAS.get(equipo, "🏳️")
+    """Extrae la bandera real como imagen PNG desde un servidor global CDN"""
+    codigo = CODIGOS_PAISES.get(equipo)
+    if codigo:
+        # Se inyecta un tag HTML con la imagen. 'w40' solicita una imagen optimizada y liviana.
+        return f'<img src="https://flagcdn.com/w40/{codigo}.png" style="width: 24px; vertical-align: middle; border-radius: 3px; box-shadow: 0 0 3px rgba(0,0,0,0.5);">'
+    return "🏳️"
 
 # ==========================================
 # 3. MOTOR DE DATOS (SISTEMA ANTI-CAÍDAS)

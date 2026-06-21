@@ -7,195 +7,166 @@ import plotly.express as px
 import math
 import requests
 import numpy as np
+from datetime import datetime
 
 # ==========================================
-# 2. CONFIGURACIÓN DE LA PÁGINA
+# 2. CONFIGURACIÓN Y ESTÉTICA DARK
 # ==========================================
 st.set_page_config(
-    page_title="🏆 Consola Inteligente Mundial 2026",
-    page_icon="🌎",
+    page_title="🏆 Consola WC 2026 - Dark Edition",
+    page_icon="⚽",
     layout="wide"
 )
 
+# Inyección de CSS para Tema Oscuro Profesional
+st.markdown("""
+    <style>
+    .main { background-color: #0e1117; color: #ffffff; }
+    .stMetric { background-color: #1e2130; padding: 15px; border-radius: 10px; border: 1px solid #deff9a; }
+    div[data-testid="stExpander"] { border: 1px solid #333; border-radius: 10px; }
+    .stButton>button { background-color: #deff9a; color: #000; font-weight: bold; width: 100%; border-radius: 20px; }
+    h1, h2, h3 { color: #deff9a !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
 # ==========================================
-# 3. MOTOR DE EXTRACCIÓN (CON PLAN B AUTOMÁTICO)
+# 3. CONEXIÓN DIRECTA AL SERVIDOR (SIN DATOS FALSOS)
 # ==========================================
-st.sidebar.header("⚙️ Configuración del Servidor")
-# Aquí está el enlace público fijado como predeterminado
-api_url = st.sidebar.text_input("URL del Repositorio (API)", "https://worldcup26.ir/get/matches")
-st.sidebar.markdown("---")
+st.sidebar.header("⚙️ Configuración")
+url_api = st.sidebar.text_input("URL del Servidor Original", "https://worldcup26.ir/get/matches")
 
 @st.cache_data(ttl=60)
-def obtener_datos_repositorio(url):
-    """Intenta extraer datos de la API; si falla, activa el respaldo de emergencia"""
+def obtener_datos_directos(url):
+    """Se conecta estrictamente al servidor proporcionado. Cero datos ficticios."""
     try:
-        respuesta = requests.get(url, timeout=5)
+        respuesta = requests.get(url, timeout=10)
         if respuesta.status_code == 200:
             datos_json = respuesta.json()
             matches = datos_json.get('data', datos_json.get('matches', datos_json))
             if isinstance(matches, list) and len(matches) > 0:
-                return matches, "🟢 Conectado a la API Oficial"
-    except Exception:
-        pass
+                return matches, "🟢 Conectado al Servidor Oficial"
+        return [], f"🔴 Servidor respondió con error: {respuesta.status_code}"
+    except Exception as e:
+        return [], "🔴 Error crítico: No se pudo establecer conexión con el servidor."
 
-    # PLAN B: Base de datos de contingencia con la estructura exacta de la API
-    respaldo = [
-        {"date": "2026-06-11", "group": "Grupo A", "home_team": {"name": "México"}, "away_team": {"name": "Curazao"}, "home_score": 0, "away_score": 0, "status": "Programado"},
-        {"date": "2026-06-11", "group": "Grupo D", "home_team": {"name": "Argentina"}, "away_team": {"name": "Suecia"}, "home_score": 2, "away_score": 1, "status": "Finalizado"},
-        {"date": "2026-06-12", "group": "Grupo B", "home_team": {"name": "Estados Unidos"}, "away_team": {"name": "Haití"}, "home_score": 0, "away_score": 0, "status": "Programado"},
-        {"date": "2026-06-12", "group": "Grupo E", "home_team": {"name": "Brasil"}, "away_team": {"name": "Turquía"}, "home_score": 0, "away_score": 0, "status": "Programado"},
-        {"date": "2026-06-13", "group": "Grupo F", "home_team": {"name": "Francia"}, "away_team": {"name": "Jordania"}, "home_score": 0, "away_score": 0, "status": "Programado"},
-        {"date": "2026-06-13", "group": "Grupo G", "home_team": {"name": "España"}, "away_team": {"name": "Japón"}, "home_score": 0, "away_score": 0, "status": "Programado"}
-    ]
-    return respaldo, "🟡 Modo Respaldo (API Oficial Fuera de Línea)"
+datos_raw, status = obtener_datos_directos(url_api)
 
-def obtener_nombre(equipo_obj):
-    if isinstance(equipo_obj, dict):
-        return equipo_obj.get('nameEn', equipo_obj.get('name', 'Desconocido'))
-    return str(equipo_obj) if equipo_obj else "Desconocido"
-
-# ==========================================
-# 4. PROCESAMIENTO Y LIMPIEZA DE DATOS
-# ==========================================
-datos_crudos, estado_conexion = obtener_datos_repositorio(api_url)
-
-if "🟢" in estado_conexion:
-    st.sidebar.success(estado_conexion)
+if "🟢" in status:
+    st.sidebar.success(status)
 else:
-    st.sidebar.warning(estado_conexion)
-
-lista_limpia = []
-for m in datos_crudos:
-    local = obtener_nombre(m.get('home_team', m.get('homeTeam')))
-    visitante = obtener_nombre(m.get('away_team', m.get('awayTeam')))
-    
-    if local == "Desconocido" or visitante == "Desconocido":
-        continue
-        
-    goles_l = m.get('home_score', m.get('homeScore', 0))
-    goles_v = m.get('away_score', m.get('awayScore', 0))
-    
-    lista_limpia.append({
-        'Fecha': m.get('localDate', m.get('date', 'TBD')),
-        'Grupo': m.get('group', 'Fase Final'),
-        'Local': local,
-        'Visitante': visitante,
-        'Goles_Local': int(goles_l) if goles_l is not None else 0,
-        'Goles_Visitante': int(goles_v) if goles_v is not None else 0,
-        'Estado': m.get('status', m.get('matchStatus', 'Programado'))
-    })
-
-df_calendario = pd.DataFrame(lista_limpia)
+    st.sidebar.error(status)
+    st.error("La conexión con el servidor de datos ha fallado. La consola se pausará hasta recuperar la conexión.")
+    st.stop() # Detiene la ejecución del resto de la página si no hay datos reales
 
 # ==========================================
-# 5. MOTOR MATEMÁTICO DE PREDICCIÓN
+# 4. LÓGICA DE HISTORIAL Y ACIERTOS
 # ==========================================
-def poisson_prob(esperado, ocurrencia):
-    return (math.exp(-esperado) * (esperado**ocurrencia)) / math.factorial(ocurrencia)
+if 'historial' not in st.session_state:
+    st.session_state.historial = []
+
+def registrar_prediccion(partido, local, visita, p_local, p_visita):
+    nueva = {
+        "id": f"{partido}_{datetime.now().strftime('%H%M%S')}",
+        "partido": partido,
+        "pred": f"{p_local} - {p_visita}",
+        "fecha": datetime.now().strftime("%d/%m %H:%M"),
+        "acierto": "Pendiente"
+    }
+    st.session_state.historial.insert(0, nueva)
 
 def calcular_estadisticas_equipo(equipo, df):
-    """Calcula el rendimiento ofensivo/defensivo real promediando los datos de la API"""
+    """Calcula el rendimiento real basándose estrictamente en los datos del servidor"""
     jugados_local = df[df['Local'] == equipo]
-    jugados_visita = df[df['Visitante'] == equipo]
+    jugados_visita = df[df['Visita'] == equipo]
     
-    goles_anotados = jugados_local['Goles_Local'].sum() + jugados_visita['Goles_Visitante'].sum()
-    goles_recibidos = jugados_local['Goles_Visitante'].sum() + jugados_visita['Goles_Local'].sum()
-    total_partidos = len(jugados_local) + len(jugados_visita)
+    goles_anotados = pd.to_numeric(jugados_local['G_L'], errors='coerce').sum() + pd.to_numeric(jugados_visita['G_V'], errors='coerce').sum()
+    goles_recibidos = pd.to_numeric(jugados_local['G_V'], errors='coerce').sum() + pd.to_numeric(jugados_visita['G_L'], errors='coerce').sum()
+    total_partidos = len(jugados_local.dropna(subset=['G_L'])) + len(jugados_visita.dropna(subset=['G_V']))
     
     if total_partidos == 0:
-        return 1.2, 1.2 # Valores base neutrales si no hay historial en el repositorio
+        return 1.2, 1.2 # Base neutral si el torneo aún no empieza o no hay datos
         
-    promedio_anotados = goles_anotados / total_partidos
-    promedio_recibidos = goles_recibidos / total_partidos
-    
-    return max(promedio_anotados, 0.5), max(promedio_recibidos, 0.5)
+    return max(goles_anotados / total_partidos, 0.5), max(goles_recibidos / total_partidos, 0.5)
 
 # ==========================================
-# 6. DISEÑO DE LA INTERFAZ GRÁFICA
+# 5. PROCESAMIENTO Y LIMPIEZA DE DATOS
 # ==========================================
-st.title("🌎 Consola Data-Driven Mundial 2026")
-st.markdown("Fixture interactivo alimentado por los datos en tiempo real del repositorio oficial.")
-st.markdown("---")
-
-# --- PANEL DE CONTROL ---
-st.sidebar.header("📅 Seleccionar Partido")
-
-lista_partidos_combo = [
-    f"{r['Fecha']} | {r['Local']} vs {r['Visitante']}" 
-    for _, r in df_calendario.iterrows()
-]
-partido_seleccionado_texto = st.sidebar.selectbox("Partidos Disponibles", lista_partidos_combo)
-
-indice_seleccionado = lista_partidos_combo.index(partido_seleccionado_texto)
-info_partido = df_calendario.iloc[indice_seleccionado]
-
-equipo_local = info_partido['Local']
-equipo_visitante = info_partido['Visitante']
-
-boton_simular = st.sidebar.button("🏆 Simular Predicción")
-
-# --- SECCIÓN 1: FIXTURE OFICIAL ---
-st.subheader("📅 Calendario y Resultados Sincronizados")
-st.dataframe(df_calendario, use_container_width=True, hide_index=True)
-st.markdown("---")
-
-# --- SECCIÓN 2: SIMULACIÓN ACTIVA ---
-if boton_simular:
-    st.subheader(f"⚔️ Análisis Táctico de Enfrentamiento")
+lista_limpia = []
+for m in datos_raw:
+    h_name = m.get('home_team', {}).get('nameEn', m.get('home_team', {}).get('name', 'TBD'))
+    a_name = m.get('away_team', {}).get('nameEn', m.get('away_team', {}).get('name', 'TBD'))
     
-    # Extracción de promedios de rendimiento directo desde la tabla
-    gf_local, gc_local = calcular_estadisticas_equipo(equipo_local, df_calendario)
-    gf_visitante, gc_visitante = calcular_estadisticas_equipo(equipo_visitante, df_calendario)
+    g_l = m.get('home_score')
+    g_v = m.get('away_score')
     
-    # Cruce de variables (Ataque de uno contra defensa del otro)
-    xg_local = (gf_local + gc_visitante) / 2
-    xg_visitante = (gf_visitante + gc_local) / 2
-    
-    # Ejecución de la simulación del marcador
-    goles_sim_local = np.random.poisson(xg_local)
-    goles_sim_visitante = np.random.poisson(xg_visitante)
-    
-    st.markdown(f"<h1 style='text-align: center; background-color: #f0f2f6; padding: 15px; border-radius: 10px; color: #333;'>⚽ Resultado Simulado: {equipo_local} {goles_sim_local} - {goles_sim_visitante} {equipo_visitante}</h1>", unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Generación de la matriz probabilística (Resultados exactos)
-    matriz_resultados = []
-    for i in range(6): 
-        for j in range(6):
-            prob_resultado = poisson_prob(xg_local, i) * poisson_prob(xg_visitante, j)
-            matriz_resultados.append({'Marcador': f"{i} - {j}", 'Probabilidad': prob_resultado * 100})
-            
-    # Simulación de córners basada en volumen ofensivo
-    xg_corners = (xg_local + xg_visitante) * 3.5
-    matriz_corners = []
-    for k in range(5, 16):
-        prob_corner = poisson_prob(xg_corners, k)
-        matriz_corners.append({'Córners': f"{k} exactos", 'Probabilidad': prob_corner * 100})
+    lista_limpia.append({
+        "Fecha": m.get('localDate', m.get('date', 'TBD')),
+        "Partido": f"{h_name} vs {a_name}",
+        "Grupo": m.get('group', 'N/A'),
+        "Estado": m.get('status', m.get('matchStatus', 'N/A')),
+        "Local": h_name, 
+        "Visita": a_name,
+        "G_L": int(g_l) if g_l is not None else None, 
+        "G_V": int(g_v) if g_v is not None else None
+    })
 
-    df_resultados = pd.DataFrame(matriz_resultados).sort_values(by='Probabilidad', ascending=False).head(10)
-    df_corners = pd.DataFrame(matriz_corners).sort_values(by='Probabilidad', ascending=False).head(10)
-    
-    colores_barras = ['Top 3 (Muy Probable)'] * 3 + ['Otras Probabilidades'] * 7
-    df_resultados['Categoría'] = colores_barras
-    df_corners['Categoría'] = colores_barras
+df = pd.DataFrame(lista_limpia)
 
-    # Despliegue de los Gráficos de barras con Plotly
-    st.subheader("🎯 Tendencias Estadísticas (Top 10)")
-    col_graf1, col_graf2 = st.columns(2)
-    mapa_colores = {'Top 3 (Muy Probable)': '#28a745', 'Otras Probabilidades': '#6c757d'}
-    
-    with col_graf1:
-        st.markdown("**Marcadores más probables**")
-        fig_res = px.bar(df_resultados, x='Marcador', y='Probabilidad', color='Categoría', color_discrete_map=mapa_colores, text='Probabilidad')
-        fig_res.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-        fig_res.update_layout(showlegend=False, yaxis_title="Probabilidad (%)", xaxis_title="Resultado Exacto")
-        fig_res.update_yaxes(range=[0, df_resultados['Probabilidad'].max() + 5]) 
-        st.plotly_chart(fig_res, use_container_width=True)
+# ==========================================
+# 6. INTERFAZ PRINCIPAL
+# ==========================================
+st.title("🌎 WC 2026 Analytics Console")
+st.markdown("Plataforma de análisis de datos conectada en tiempo real al servidor oficial.")
+
+# Selector de Partido
+st.subheader("📅 Simulador de Enfrentamientos")
+sel_partido = st.selectbox("Selecciona un partido del servidor para procesar su predicción:", df['Partido'].tolist())
+info = df[df['Partido'] == sel_partido].iloc[0]
+
+col1, col2 = st.columns([1, 1])
+
+with col1:
+    if st.button("🏆 Ejecutar Modelo Predictivo"):
+        # Extracción de métricas
+        gf_local, gc_local = calcular_estadisticas_equipo(info['Local'], df)
+        gf_visitante, gc_visitante = calcular_estadisticas_equipo(info['Visita'], df)
         
-    with col_graf2:
-        st.markdown("**Total de Córners en el partido**")
-        fig_cor = px.bar(df_corners, x='Córners', y='Probabilidad', color='Categoría', color_discrete_map=mapa_colores, text='Probabilidad')
-        fig_cor.update_traces(texttemplate='%{text:.1f}%', textposition='outside')
-        fig_cor.update_layout(showlegend=False, yaxis_title="Probabilidad (%)", xaxis_title="Cantidad de Córners")
-        fig_cor.update_yaxes(range=[0, df_corners['Probabilidad'].max() + 5])
-        st.plotly_chart(fig_cor, use_container_width=True)
+        # Cruce de variables (Ataque vs Defensa)
+        xg_local = (gf_local + gc_visitante) / 2
+        xg_visitante = (gf_visitante + gc_local) / 2
+        
+        # Simulación
+        res_l = np.random.poisson(xg_local)
+        res_v = np.random.poisson(xg_visitante)
+        
+        st.markdown(f"<h2 style='text-align: center; background-color: #1e2130; padding: 20px; border-radius: 10px; border: 1px solid #deff9a;'>⚽ Marcador Proyectado:<br>{info['Local']} {res_l} - {res_v} {info['Visita']}</h2>", unsafe_allow_html=True)
+        
+        registrar_prediccion(sel_partido, info['Local'], info['Visita'], res_l, res_v)
+        st.success("✅ Predicción registrada en la base de datos histórica.")
+
+# ==========================================
+# 7. PANEL DE HISTÓRICO Y ACIERTOS
+# ==========================================
+st.markdown("---")
+tab1, tab2, tab3 = st.tabs(["📊 Base de Datos del Servidor", "📈 Historial de Predicciones", "🎯 Tracking de Efectividad"])
+
+with tab1:
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+with tab2:
+    if st.session_state.historial:
+        df_hist = pd.DataFrame(st.session_state.historial)
+        st.table(df_hist[["fecha", "partido", "pred", "acierto"]])
+    else:
+        st.info("Aún no has ejecutado el modelo predictivo. Las predicciones aparecerán aquí.")
+
+with tab3:
+    st.subheader("Rendimiento del Algoritmo")
+    aciertos = [h for h in st.session_state.historial if h['acierto'] != "Pendiente"]
+    total = len(st.session_state.historial)
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Volumen de Predicciones", total)
+    c2.metric("Aciertos Exactos", len([a for a in aciertos if a['acierto'] == "Exacto"]))
+    efectividad = int((len(aciertos)/total)*100) if total > 0 else 0
+    c3.metric("Efectividad Global", f"{efectividad}%")

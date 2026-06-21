@@ -7,6 +7,8 @@ import requests
 import numpy as np
 from datetime import datetime, timedelta
 import pytz
+import json
+import os
 
 # ==========================================
 # 2. CONFIGURACIÓN Y ESTÉTICA "GOALSTREAM"
@@ -24,24 +26,37 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 3. MOTOR DE DATOS (CON CACHÉ DE PROTECCIÓN)
+# 3. MOTOR DE DATOS (SISTEMA ANTI-CAÍDAS)
 # ==========================================
-# Añadimos @st.cache_data por 60 segundos para evitar colapsar el servidor si recargas la página
-@st.cache_data(ttl=60)
-def obtener_datos_directos(url):
+def obtener_datos_resilientes(url):
+    """Intenta conectar a la API. Si falla, usa un respaldo local (backup)."""
+    archivo_backup = "backup_mundial.json"
+    
     try:
-        respuesta = requests.get(url, timeout=60)
+        # Intentamos conectar a la API oficial (Timeout de 15s para no hacer esperar al usuario)
+        respuesta = requests.get(url, timeout=15)
         if respuesta.status_code == 200:
             datos_json = respuesta.json()
             if isinstance(datos_json, list): matches = datos_json
             elif isinstance(datos_json, dict): matches = datos_json.get('data', datos_json.get('matches', datos_json.get('games', [])))
             else: matches = []
             
-            if len(matches) > 0: return matches, "🟢"
-            return [], "🔴 Servidor vacío"
-        return [], f"🔴 Error {respuesta.status_code}"
+            if len(matches) > 0:
+                # GUARDIA: Si hay datos válidos, sobrescribimos el archivo de respaldo local
+                with open(archivo_backup, 'w', encoding='utf-8') as f:
+                    json.dump(matches, f)
+                return matches, "🟢 En Vivo (API Oficial)"
     except Exception as e:
-        return [], "🔴 Timeout/Error de Red"
+        pass # Si falla (timeout, error 500, etc.), pasamos de largo a intentar leer el respaldo
+
+    # PLAN B: Leer desde el disco duro si la API falló
+    if os.path.exists(archivo_backup):
+        with open(archivo_backup, 'r', encoding='utf-8') as f:
+            matches_respaldo = json.load(f)
+        return matches_respaldo, "🟡 Modo Offline (Último respaldo local)"
+    
+    # Si todo falla y ni siquiera hay respaldo creado:
+    return [], "🔴 Servidor caído y sin datos de respaldo."
 
 def conversor_seguro(valor):
     try:
@@ -50,10 +65,13 @@ def conversor_seguro(valor):
     except: return 0
 
 url_api = "https://worldcup26.ir/get/games"
-datos_raw, status = obtener_datos_directos(url_api)
 
-if status != "🟢":
-    st.error("⚠️ El servidor oficial está experimentando problemas de conexión. Reintentando...")
+# Spinner visual para que el usuario sepa que está cargando
+with st.spinner("Sincronizando base de datos..."):
+    datos_raw, status = obtener_datos_resilientes(url_api)
+
+if "🔴" in status:
+    st.error("⚠️ El servidor oficial está caído y aún no hemos podido crear un respaldo local. Intenta más tarde.")
     st.stop()
 
 # ==========================================
@@ -86,7 +104,6 @@ for m in datos_raw:
     })
 
 df = pd.DataFrame(lista_limpia)
-# Convertir textos de fecha a objetos de tiempo reales para poder filtrarlos
 df['Fecha_Obj'] = pd.to_datetime(df['Fecha_Raw'], format='mixed', errors='coerce')
 
 def calcular_fuerza(equipo, df_datos):
@@ -99,28 +116,22 @@ def calcular_fuerza(equipo, df_datos):
     return max(g_a / total, 0.5), max(g_r / total, 0.5)
 
 def predecir_partido(local, visita, df):
-    """Genera la predicción fijando una semilla para que el resultado pasado no cambie"""
     gf_l, gc_l = calcular_fuerza(local, df)
     gf_v, gc_v = calcular_fuerza(visita, df)
     xg_l = (gf_l + gc_v) / 2
     xg_v = (gf_v + gc_l) / 2
-    
-    # Truco de Semilla: Usamos las letras de los países para fijar la matemática
     semilla = sum(ord(c) for c in local + visita)
     np.random.seed(semilla)
-    
     pred_l = np.random.poisson(xg_l)
     pred_v = np.random.poisson(xg_v)
     return xg_l, xg_v, pred_l, pred_v
 
 def evaluar_acierto(gl_real, gv_real, gl_pred, gv_pred):
-    """Compara si atinamos al Ganador, Perdedor o Empate (Formato 1X2)"""
     res_real = 'L' if gl_real > gv_real else ('V' if gv_real > gl_real else 'E')
     res_pred = 'L' if gl_pred > gv_pred else ('V' if gv_pred > gl_pred else 'E')
     return res_real == res_pred
 
 def crear_tarjeta_principal(info, xg_l, xg_v, pred_l, pred_v):
-    """Genera el HTML de la tarjeta grande (GoalStream)"""
     total_xg = xg_l + xg_v
     pos_l = int((xg_l / total_xg) * 100) if total_xg > 0 else 50
     pos_v = 100 - pos_l
@@ -152,14 +163,14 @@ def crear_tarjeta_principal(info, xg_l, xg_v, pred_l, pred_v):
 # 5. SIDEBAR - NAVEGACIÓN
 # ==========================================
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/FIFA_World_Cup_2026_Logo.png/800px-FIFA_World_Cup_2026_Logo.png", width=150)
+st.sidebar.markdown(f"<p style='color: #9ca3af; font-size: 12px; text-align: center;'>Estado de conexión:<br>{status}</p>", unsafe_allow_html=True)
 menu = st.sidebar.radio("Navegación", ["📡 En vivo", "📅 Calendario", "📊 Posiciones"])
 
 # ==========================================
-# 6. DASHBOARD PRINCIPAL (AUTOMATIZADO)
+# 6. DASHBOARD PRINCIPAL
 # ==========================================
 if menu == "📡 En vivo":
     
-    # 6.1 HEADER Y LÓGICA DE TIEMPO
     tz_nicaragua = pytz.timezone('America/Managua')
     fecha_actual_nic = datetime.now(tz_nicaragua).date()
     fecha_manana_nic = fecha_actual_nic + timedelta(days=1)
@@ -172,22 +183,17 @@ if menu == "📡 En vivo":
 
     st.markdown("---")
     
-    # 6.2 SECCIÓN: PARTIDOS DE HOY Y MAÑANA (Sin listas desplegables)
     st.subheader("🗓️ Partidos en Agenda (Hoy y Mañana)")
-    
-    # Filtrar partidos basados en la fecha
     df['Solo_Fecha'] = df['Fecha_Obj'].dt.date
     partidos_agenda = df[(df['Solo_Fecha'] == fecha_actual_nic) | (df['Solo_Fecha'] == fecha_manana_nic)]
     
     if partidos_agenda.empty:
         st.info(f"No hay partidos programados para el {fecha_actual_nic.strftime('%d/%m')} ni para el {fecha_manana_nic.strftime('%d/%m')} en la base de datos.")
     else:
-        # Dibujar tarjetas dinámicamente
         for idx, row in partidos_agenda.iterrows():
             xg_l, xg_v, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
             st.markdown(crear_tarjeta_principal(row, xg_l, xg_v, pred_l, pred_v), unsafe_allow_html=True)
 
-    # 6.3 SECCIÓN: EVALUACIÓN DEL MODELO (Aciertos y Fallos)
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.subheader("🎯 Auditoría del Modelo Predictivo")
     st.markdown("<p style='color: #9ca3af;'>Se evalúa si el modelo acertó al ganador o al empate de los partidos ya finalizados.</p>", unsafe_allow_html=True)
@@ -197,7 +203,6 @@ if menu == "📡 En vivo":
     if partidos_finalizados.empty:
         st.warning("Aún no hay partidos finalizados para auditar.")
     else:
-        # Mostrar en cuadrícula de 3 columnas
         columnas = st.columns(3)
         col_idx = 0
         
@@ -205,7 +210,6 @@ if menu == "📡 En vivo":
             xg_l, xg_v, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
             acierto = evaluar_acierto(row['G_L'], row['G_V'], pred_l, pred_v)
             
-            # Lógica de colores: Verde (#10b981) si acertó ganador/empate, Rojo (#ef4444) si falló
             color_borde = "#10b981" if acierto else "#ef4444"
             icono = "✅ ACIERTO" if acierto else "❌ FALLO"
             

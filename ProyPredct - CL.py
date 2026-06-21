@@ -39,7 +39,7 @@ url_api = st.sidebar.text_input("URL del Servidor Original", "https://worldcup26
 def obtener_datos_directos(url):
     """Se conecta y extrae datos detectando inteligentemente la estructura del JSON"""
     try:
-        respuesta = requests.get(url, timeout=10)
+        respuesta = requests.get(url, timeout=60)
         if respuesta.status_code == 200:
             datos_json = respuesta.json()
             

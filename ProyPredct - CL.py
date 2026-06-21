@@ -29,27 +29,33 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# DICCIONARIO DE BANDERAS
+# DICCIONARIO DE BANDERAS (Optimizado y Fusionado)
 BANDERAS = {
-    "Mexico": "🇲🇽", "South Africa": "🇿🇦", "Argentina": "🇦🇷", "Brazil": "🇧🇷",
-    "United States": "🇺🇸", "Canada": "🇨🇦", "France": "🇫🇷", "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
-    "Spain": "🇪🇸", "Germany": "🇩🇪", "Italy": "🇮🇹", "Portugal": "🇵🇹",
-    "Netherlands": "🇳🇱", "Belgium": "🇧🇪", "Uruguay": "🇺🇾", "Colombia": "🇨🇴",
-    "Chile": "🇨🇱", "Peru": "🇵🇪", "Japan": "🇯🇵", "South Korea": "🇰🇷",
-    "Australia": "🇦🇺", "Morocco": "🇲🇦", "Senegal": "🇸🇳", "Egypt": "🇪🇬",
-    "Nigeria": "🇳🇬", "Saudi Arabia": "🇸🇦", "Iran": "🇮🇷", "Ecuador": "🇪🇨",
-    "Croatia": "🇭🇷", "Switzerland": "🇨🇭", "Denmark": "🇩🇰", "Sweden": "🇸🇪",
-    "Poland": "🇵🇱", "Serbia": "🇷🇸", "Wales": "🏴󠁧󠁢󠁷󠁬󠁳󠁿", "Costa Rica": "🇨🇷",
-    "Panama": "🇵🇦", "Honduras": "🇭🇳", "Jamaica": "🇯🇲", "El Salvador": "🇸🇻",
-    "Guatemala": "🇬🇹", "Nicaragua": "🇳🇮", "Curaçao": "🇨🇼", "Haiti": "🇭🇹",
-    "Trinidad and Tobago": "🇹🇹", "Czechia": "🇨🇿", "Bosnia and Herz.": "🇧🇦",
-    "Paraguay": "🇵🇾", "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿", "Ivory Coast": "🇨🇮", "Tunisia": "🇹🇳",
-    "New Zealand": "🇳🇿", "Cape Verde": "🇨🇻"
+    # Lista principal proporcionada
+    "Argentina": "🇦🇷", "Algeria": "🇩🇿", "Saudi Arabia": "🇸🇦", "Australia": "🇦🇺",
+    "Austria": "🇦🇹", "Belgium": "🇧🇪", "Bosnia and Herzegovina": "🇧🇦", "Brazil": "🇧🇷",
+    "Cape Verde": "🇨🇻", "Canada": "🇨🇦", "Colombia": "🇨🇴", "South Korea": "🇰🇷",
+    "Ivory Coast": "🇨🇮", "Croatia": "🇭🇷", "Curaçao": "🇨🇼", "Czech Republic": "🇨🇿",
+    "Ecuador": "🇪🇨", "Egypt": "🇪🇬", "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+    "Spain": "🇪🇸", "United States": "🇺🇸", "France": "🇫🇷", "Ghana": "🇬🇭",
+    "Haiti": "🇭🇹", "Iraq": "🇮🇶", "Iran": "🇮🇷", "Japan": "🇯🇵", "Jordan": "🇯🇴",
+    "Morocco": "🇲🇦", "Mexico": "🇲🇽", "Norway": "🇳🇴", "New Zealand": "🇳🇿",
+    "Netherlands": "🇳🇱", "Panama": "🇵🇦", "Paraguay": "🇵🇾", "Portugal": "🇵🇹",
+    "Qatar": "🇶🇦", "Democratic Republic of the Congo": "🇨🇩", "Senegal": "🇸🇳",
+    "South Africa": "🇿🇦", "Sweden": "🇸🇪", "Switzerland": "🇨🇭", "Tunisia": "🇹🇳",
+    "Turkey": "🇹🇷", "Uruguay": "🇺🇾", "Uzbekistan": "🇺🇿", "Germany": "🇩🇪",
+
+    # --- AÑADIDOS DE SEGURIDAD (Variaciones de nombres y otros clasificados) ---
+    "Bosnia and Herz.": "🇧🇦", "Czechia": "🇨🇿", "DR Congo": "🇨🇩", "Türkiye": "🇹🇷",
+    "Italy": "🇮🇹", "Peru": "🇵🇪", "Nigeria": "🇳🇬", "Denmark": "🇩🇰", "Poland": "🇵🇱",
+    "Serbia": "🇷🇸", "Wales": "🏴󠁧󠁢󠁷󠁬󠁳󠁿", "Costa Rica": "🇨🇷", "Honduras": "🇭🇳",
+    "Jamaica": "🇯🇲", "El Salvador": "🇸🇻", "Guatemala": "🇬🇹", "Nicaragua": "🇳🇮",
+    "Trinidad and Tobago": "🇹🇹"
 }
 
 def obtener_bandera(equipo):
+    """Devuelve la bandera correspondiente o una bandera blanca si no existe"""
     return BANDERAS.get(equipo, "🏳️")
-
 # ==========================================
 # 3. MOTOR DE DATOS (SISTEMA ANTI-CAÍDAS)
 # ==========================================

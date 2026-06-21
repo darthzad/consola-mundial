@@ -25,11 +25,12 @@ st.markdown("""
     footer {visibility: hidden;}
     /* Estilos para los expanders (acordeones) */
     div[data-testid="stExpander"] { background-color: #151a22; border: 1px solid #1f2937; border-radius: 12px; }
-    div[data-testid="stExpander"] > summary { color: #ffffff; font-weight: bold; font-size: 18px; padding: 15px; }
+    div[data-testid="stExpander"] > summary { color: #ffffff; font-weight: bold; font-size: 16px; padding: 10px; }
+    div[data-testid="stMetricValue"] { color: #2fe47a; }
     </style>
     """, unsafe_allow_html=True)
 
-# DICCIONARIO DE BANDERAS (Asociación automática)
+# DICCIONARIO DE BANDERAS
 BANDERAS = {
     "Mexico": "🇲🇽", "South Africa": "🇿🇦", "Argentina": "🇦🇷", "Brazil": "🇧🇷",
     "United States": "🇺🇸", "Canada": "🇨🇦", "France": "🇫🇷", "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
@@ -47,7 +48,7 @@ BANDERAS = {
 }
 
 def obtener_bandera(equipo):
-    return BANDERAS.get(equipo, "🏳️") # Bandera blanca si el país no está en la lista
+    return BANDERAS.get(equipo, "🏳️")
 
 # ==========================================
 # 3. MOTOR DE DATOS (SISTEMA ANTI-CAÍDAS)
@@ -65,15 +66,13 @@ def obtener_datos_resilientes(url):
             if len(matches) > 0:
                 with open(archivo_backup, 'w', encoding='utf-8') as f:
                     json.dump(matches, f)
-                return matches, "🟢 En Vivo (API Oficial)"
+                return matches, "🟢 Conectado"
     except Exception: pass
 
     if os.path.exists(archivo_backup):
         with open(archivo_backup, 'r', encoding='utf-8') as f:
-            matches_respaldo = json.load(f)
-        return matches_respaldo, "🟡 Modo Offline (Último respaldo local)"
-    
-    return [], "🔴 Servidor caído y sin datos de respaldo."
+            return json.load(f), "🟡 Offline (Respaldo)"
+    return [], "🔴 Caído"
 
 def conversor_seguro(valor):
     try:
@@ -82,12 +81,11 @@ def conversor_seguro(valor):
     except: return 0
 
 url_api = "https://worldcup26.ir/get/games"
-
 with st.spinner("Sincronizando base de datos..."):
     datos_raw, status = obtener_datos_resilientes(url_api)
 
 if "🔴" in status:
-    st.error("⚠️ El servidor oficial está caído. Intenta más tarde.")
+    st.error("⚠️ Servidor caído. Intenta más tarde.")
     st.stop()
 
 # ==========================================
@@ -107,12 +105,11 @@ for m in datos_raw:
     else: estado_partido = f"EN VIVO ({time_elapsed}')"
         
     grupo_letra = m.get('group', '')
-    grupo_formateado = f"Grupo {grupo_letra}" if grupo_letra else 'Fase Final'
     
     lista_limpia.append({
         "Fecha_Raw": m.get('local_date', '01/01/2026 00:00'),
         "Partido": f"{h_name} vs {a_name}",
-        "Grupo": grupo_formateado,
+        "Grupo": f"Grupo {grupo_letra}" if grupo_letra else 'Fase Final',
         "Estado": estado_partido,
         "Local": h_name, "Visita": a_name,
         "G_L": conversor_seguro(m.get('home_score')), 
@@ -132,7 +129,6 @@ def calcular_fuerza(equipo, df_datos):
     return max(g_a / total, 0.5), max(g_r / total, 0.5)
 
 def calcular_probabilidades_1x2(xg_l, xg_v):
-    """Calcula las probabilidades de Gana Local, Empate, Gana Visita"""
     p_l, p_e, p_v = 0, 0, 0
     for i in range(10):
         for j in range(10):
@@ -157,106 +153,35 @@ def evaluar_acierto(gl_real, gv_real, gl_pred, gv_pred):
     res_pred = 'L' if gl_pred > gv_pred else ('V' if gv_pred > gl_pred else 'E')
     return res_real == res_pred
 
-def crear_tarjeta_expandida(info, xg_l, xg_v, pred_l, pred_v):
-    """Genera el contenido interno al dar clic en un partido"""
-    prob_l, prob_e, prob_v = calcular_probabilidades_1x2(xg_l, xg_v)
-    
-    return f"""
-    <div style="padding: 10px; text-align: center;">
-        <p style="color: #8b5cf6; font-size: 14px; margin-bottom: 20px; font-style: italic;">🎯 Marcador Exacto Predicho: {pred_l} - {pred_v}</p>
-        
-        <div style="display: flex; justify-content: space-around; text-align: center; border-top: 1px solid #1f2937; border-bottom: 1px solid #1f2937; padding: 15px 0; margin-bottom: 20px;">
-            <div><h3 style="margin: 0; font-size: 20px; color: #2fe47a;">{xg_l:.2f}</h3><span style="color: #6b7280; font-size: 10px;">XG LOCAL</span></div>
-            <div><h3 style="margin: 0; font-size: 20px; color: #fff;">{prob_e:.1f}%</h3><span style="color: #6b7280; font-size: 10px;">PROB. EMPATE</span></div>
-            <div><h3 style="margin: 0; font-size: 20px; color: #2fe47a;">{xg_v:.2f}</h3><span style="color: #6b7280; font-size: 10px;">XG VISITA</span></div>
-        </div>
-        
-        <div style="text-align: left; font-size: 10px; color: #6b7280; margin-bottom: 5px;">PROBABILIDADES DE VICTORIA (1X2)</div>
-        <div style="display: flex; width: 100%; height: 8px; border-radius: 4px; overflow: hidden;">
-            <div style="width: {prob_l}%; background-color: #2fe47a;" title="Local: {prob_l:.1f}%"></div>
-            <div style="width: {prob_e}%; background-color: #6b7280;" title="Empate: {prob_e:.1f}%"></div>
-            <div style="width: {prob_v}%; background-color: #3b82f6;" title="Visita: {prob_v:.1f}%"></div>
-        </div>
-        <div style="display: flex; justify-content: space-between; font-size: 10px; color: #fff; margin-top: 5px;">
-            <span>{prob_l:.1f}% (L)</span>
-            <span>{prob_v:.1f}% (V)</span>
-        </div>
-    </div>
-    """
-
 # ==========================================
-# 5. SIDEBAR - NAVEGACIÓN
+# 5. SIDEBAR Y MÉTRICAS GLOBALES
 # ==========================================
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/FIFA_World_Cup_2026_Logo.png/800px-FIFA_World_Cup_2026_Logo.png", width=150)
-st.sidebar.markdown(f"<p style='color: #9ca3af; font-size: 12px; text-align: center;'>Estado:<br>{status}</p>", unsafe_allow_html=True)
-menu = st.sidebar.radio("Navegación", ["📡 En vivo", "📅 Calendario", "📊 Posiciones"])
+st.sidebar.markdown(f"<p style='color: #9ca3af; font-size: 12px; text-align: center;'>Servidor: {status}</p>", unsafe_allow_html=True)
+menu = st.sidebar.radio("Navegación", ["📡 Tablero en Vivo", "📊 Histórico de Datos"])
 
-# ==========================================
-# 6. DASHBOARD PRINCIPAL
-# ==========================================
-if menu == "📡 En vivo":
+if menu == "📡 Tablero en Vivo":
     
+    # ENCABEZADO
     tz_nicaragua = pytz.timezone('America/Managua')
     fecha_actual_nic = datetime.now(tz_nicaragua).date()
-    fecha_manana_nic = fecha_actual_nic + timedelta(days=1)
     
     col1, col2 = st.columns([3, 1])
-    with col1: st.markdown("<h1 style='margin:0; font-size: 32px;'>Mundial 2026 — <span style='color: #2fe47a;'>Autopilot</span></h1>", unsafe_allow_html=True)
-    with col2: st.markdown(f"<div style='background-color: #1f2937; padding: 10px; border-radius: 20px; text-align: center; color: #9ca3af;'>📅 {fecha_actual_nic.strftime('%d %b %Y')}</div>", unsafe_allow_html=True)
-
+    with col1: st.markdown("<h1 style='margin:0; font-size: 32px;'>Consola Data-Driven <span style='color: #2fe47a;'>WC 26</span></h1>", unsafe_allow_html=True)
+    with col2: st.markdown(f"<div style='background-color: #1f2937; padding: 10px; border-radius: 20px; text-align: center; color: #9ca3af;'>📅 {fecha_actual_nic.strftime('%d %b %Y')} (NIC)</div>", unsafe_allow_html=True)
+    
     st.markdown("---")
-    st.subheader("🗓️ Partidos en Agenda (Hoy y Mañana)")
     
-    df['Solo_Fecha'] = df['Fecha_Obj'].dt.date
-    partidos_agenda = df[(df['Solo_Fecha'] == fecha_actual_nic) | (df['Solo_Fecha'] == fecha_manana_nic)]
-    
-    if partidos_agenda.empty:
-        st.info(f"No hay partidos programados para hoy ni mañana en la base de datos.")
-    else:
-        for idx, row in partidos_agenda.iterrows():
-            # Obtener banderas
-            flag_l = obtener_bandera(row['Local'])
-            flag_v = obtener_bandera(row['Visita'])
-            
-            # Formatear el título comprimido del expander
-            titulo_comprimido = f"{row['Fecha_Raw'][-5:]} | {flag_l} {row['Local']}  {row['G_L']} - {row['G_V']}  {row['Visita']} {flag_v}  ({row['Estado']})"
-            
-            # Crear el acordeón interactivo
-            with st.expander(titulo_comprimido):
-                xg_l, xg_v, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
-                st.markdown(crear_tarjeta_expandida(row, xg_l, xg_v, pred_l, pred_v), unsafe_allow_html=True)
-
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    st.subheader("🎯 Auditoría del Modelo Predictivo")
-    st.markdown("<p style='color: #9ca3af;'>Historial de aciertos en ganadores y empates.</p>", unsafe_allow_html=True)
+    # ------------------------------------------
+    # NUEVO: DASHBOARD DE ESTADÍSTICAS GLOBALES
+    # ------------------------------------------
+    st.subheader("📈 Rendimiento Global del Modelo")
     
     partidos_finalizados = df[df['Estado'] == "FINALIZADO"]
+    total_juegos = len(df)
+    juegos_listos = len(partidos_finalizados)
+    juegos_pendientes = total_juegos - juegos_listos
     
-    if partidos_finalizados.empty:
-        st.warning("Aún no hay partidos finalizados para auditar.")
-    else:
-        columnas = st.columns(3)
-        for col_idx, (idx, row) in enumerate(partidos_finalizados.iterrows()):
-            xg_l, xg_v, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
-            acierto = evaluar_acierto(row['G_L'], row['G_V'], pred_l, pred_v)
-            
-            color_borde = "#10b981" if acierto else "#ef4444"
-            icono = "✅ ACIERTO" if acierto else "❌ FALLO"
-            flag_l = obtener_bandera(row['Local'])
-            flag_v = obtener_bandera(row['Visita'])
-            
-            tarjeta_historial = f"""
-            <div style="background-color: #111827; border-left: 4px solid {color_borde}; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-                <div style="font-size: 12px; color: #9ca3af; margin-bottom: 5px;">{row['Fecha_Raw'][:10]} | {row['Grupo']}</div>
-                <div style="font-weight: bold; font-size: 16px;">{flag_l} {row['Local']} {row['G_L']} - {row['G_V']} {row['Visita']} {flag_v}</div>
-                <div style="display: flex; justify-content: space-between; margin-top: 10px; font-size: 12px;">
-                    <span style="color: #8b5cf6;">Predicción: {pred_l}-{pred_v}</span>
-                    <span style="color: {color_borde}; font-weight: bold;">{icono}</span>
-                </div>
-            </div>
-            """
-            columnas[col_idx % 3].markdown(tarjeta_historial, unsafe_allow_html=True)
-
-else:
-    st.info("Pestaña en construcción. Selecciona 'En vivo'.")
-    st.dataframe(df, use_container_width=True)
+    aciertos = 0
+    for idx, row in partidos_finalizados.iterrows():
+        _, _, pred_l, pred

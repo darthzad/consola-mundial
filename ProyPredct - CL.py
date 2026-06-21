@@ -33,7 +33,7 @@ st.markdown("""
 # 3. CONEXIÓN DIRECTA AL SERVIDOR (SIN DATOS FALSOS)
 # ==========================================
 st.sidebar.header("⚙️ Configuración")
-url_api = st.sidebar.text_input("URL del Servidor Original", "https://worldcup26.ir/get/matches")
+url_api = st.sidebar.text_input("URL del Servidor Original", "https://worldcup26.ir/get/games")
 
 @st.cache_data(ttl=60)
 def obtener_datos_directos(url):

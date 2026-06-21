@@ -102,13 +102,17 @@ def calcular_estadisticas_equipo(equipo, df):
 # ==========================================
 # 5. PROCESAMIENTO Y LIMPIEZA DE DATOS
 # ==========================================
+def conversor_seguro(valor):
+    """Intenta convertir a número; si es texto o vacío, devuelve None sin estrellarse"""
+    try:
+        return int(valor)
+    except (ValueError, TypeError):
+        return None
+
 lista_limpia = []
 for m in datos_raw:
     h_name = m.get('home_team', {}).get('nameEn', m.get('home_team', {}).get('name', 'TBD'))
     a_name = m.get('away_team', {}).get('nameEn', m.get('away_team', {}).get('name', 'TBD'))
-    
-    g_l = m.get('home_score')
-    g_v = m.get('away_score')
     
     lista_limpia.append({
         "Fecha": m.get('localDate', m.get('date', 'TBD')),
@@ -117,8 +121,8 @@ for m in datos_raw:
         "Estado": m.get('status', m.get('matchStatus', 'N/A')),
         "Local": h_name, 
         "Visita": a_name,
-        "G_L": int(g_l) if g_l is not None else None, 
-        "G_V": int(g_v) if g_v is not None else None
+        "G_L": conversor_seguro(m.get('home_score')), 
+        "G_V": conversor_seguro(m.get('away_score'))
     })
 
 df = pd.DataFrame(lista_limpia)

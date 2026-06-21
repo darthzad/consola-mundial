@@ -29,7 +29,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# DICCIONARIO DE BANDERAS (Emojis Nativos - La única forma compatible con los títulos de Streamlit)
+# DICCIONARIO DE BANDERAS
 BANDERAS = {
     "Mexico": "🇲🇽", "South Africa": "🇿🇦", "Argentina": "🇦🇷", "Brazil": "🇧🇷",
     "United States": "🇺🇸", "Canada": "🇨🇦", "France": "🇫🇷", "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
@@ -81,16 +81,13 @@ def conversor_seguro(valor):
     except: return 0
 
 url_api = "https://worldcup26.ir/get/games"
-with st.spinner("Sincronizando base de datos..."):
+with st.spinner("Entrenando red predictiva y sincronizando..."):
     datos_raw, status = obtener_datos_resilientes(url_api)
 
 if "🔴" in status:
     st.error("⚠️ Servidor caído. Intenta más tarde.")
     st.stop()
 
-# ==========================================
-# 4. PROCESAMIENTO E INTELIGENCIA DEL MODELO
-# ==========================================
 lista_limpia = []
 for m in datos_raw:
     h_name = m.get('home_team_name_en', 'TBD')
@@ -119,32 +116,76 @@ for m in datos_raw:
 df = pd.DataFrame(lista_limpia)
 df['Fecha_Obj'] = pd.to_datetime(df['Fecha_Raw'], format='mixed', errors='coerce')
 
-def calcular_fuerza(equipo, df_datos):
-    j_l = df_datos[df_datos['Local'] == equipo]
-    j_v = df_datos[df_datos['Visita'] == equipo]
-    g_a = pd.to_numeric(j_l['G_L']).sum() + pd.to_numeric(j_v['G_V']).sum()
-    g_r = pd.to_numeric(j_l['G_V']).sum() + pd.to_numeric(j_v['G_L']).sum()
-    total = len(j_l) + len(j_v)
-    if total == 0: return 1.2, 1.2
-    return max(g_a / total, 0.5), max(g_r / total, 0.5)
+# ==========================================
+# 4. MOTOR DE MACHINE LEARNING & DIXON-COLES
+# ==========================================
 
-def calcular_probabilidades_1x2(xg_l, xg_v):
+# 4.1 FASE DE ENTRENAMIENTO (Reajuste Automático)
+def entrenar_modelo_ml(df_datos):
+    equipos = set(df_datos['Local']).union(set(df_datos['Visita']))
+    # Pesos iniciales: 1.1 goles esperados base para cada equipo
+    pesos = {eq: {'ataque': 1.1, 'defensa': 1.1} for eq in equipos}
+    learning_rate = 0.1 # Tasa de corrección por error
+    
+    # Procesar partidos terminados en orden cronológico
+    df_fin = df_datos[df_datos['Estado'] == 'FINALIZADO'].sort_values('Fecha_Obj')
+    
+    for _, row in df_fin.iterrows():
+        l, v = row['Local'], row['Visita']
+        gl_real, gv_real = row['G_L'], row['G_V']
+        
+        # El modelo predice internamente usando sus pesos actuales
+        xg_l_pred = pesos[l]['ataque'] * pesos[v]['defensa']
+        xg_v_pred = pesos[v]['ataque'] * pesos[l]['defensa']
+        
+        # Cálculo del gradiente de error
+        err_l = gl_real - xg_l_pred
+        err_v = gv_real - xg_v_pred
+        
+        # Ajuste inteligente: Actualiza los pesos basados en el error
+        pesos[l]['ataque'] = max(0.5, pesos[l]['ataque'] + (learning_rate * err_l))
+        pesos[v]['defensa'] = max(0.5, pesos[v]['defensa'] - (learning_rate * err_l)) # Defensa empeora si recibe goles
+        pesos[v]['ataque'] = max(0.5, pesos[v]['ataque'] + (learning_rate * err_v))
+        pesos[l]['defensa'] = max(0.5, pesos[l]['defensa'] - (learning_rate * err_v))
+        
+    return pesos
+
+# Ejecutar el entrenamiento masivo en memoria
+pesos_entrenados = entrenar_modelo_ml(df)
+
+# 4.2 CÁLCULO DE PROBABILIDADES CON DIXON-COLES
+def calcular_prob_dixon_coles(xg_l, xg_v, rho=0.15):
     p_l, p_e, p_v = 0, 0, 0
     for i in range(10):
         for j in range(10):
             prob = (math.exp(-xg_l) * (xg_l**i) / math.factorial(i)) * (math.exp(-xg_v) * (xg_v**j) / math.factorial(j))
+            
+            # Aplicación de la corrección de dependencia para empates de baja anotación
+            if i == 0 and j == 0: prob *= (1 - xg_l * xg_v * rho)
+            elif i == 1 and j == 0: prob *= (1 + xg_l * rho)
+            elif i == 0 and j == 1: prob *= (1 + xg_v * rho)
+            elif i == 1 and j == 1: prob *= (1 - rho)
+            
+            prob = max(0, prob) # Filtrar probabilidades negativas matemáticas
+            
             if i > j: p_l += prob
             elif i == j: p_e += prob
             else: p_v += prob
+            
     total = p_l + p_e + p_v
     if total == 0: return 33.3, 33.3, 33.3
     return (p_l/total)*100, (p_e/total)*100, (p_v/total)*100
 
-def predecir_partido(local, visita, df):
-    gf_l, gc_l = calcular_fuerza(local, df)
-    gf_v, gc_v = calcular_fuerza(visita, df)
-    xg_l = (gf_l + gc_v) / 2
-    xg_v = (gf_v + gc_l) / 2
+def predecir_partido_avanzado(local, visita):
+    # Ya no saca promedios, extrae los "Pesos Entrenados" de la red
+    f_ataque_l = pesos_entrenados.get(local, {}).get('ataque', 1.1)
+    f_defensa_v = pesos_entrenados.get(visita, {}).get('defensa', 1.1)
+    f_ataque_v = pesos_entrenados.get(visita, {}).get('ataque', 1.1)
+    f_defensa_l = pesos_entrenados.get(local, {}).get('defensa', 1.1)
+    
+    xg_l = f_ataque_l * f_defensa_v
+    xg_v = f_ataque_v * f_defensa_l
+    
     np.random.seed(sum(ord(c) for c in local + visita))
     return xg_l, xg_v, np.random.poisson(xg_l), np.random.poisson(xg_v)
 
@@ -162,31 +203,25 @@ menu = st.sidebar.radio("Navegación", ["📡 Tablero en Vivo", "📊 Histórico
 
 if menu == "📡 Tablero en Vivo":
     
-    # ENCABEZADO
     tz_nicaragua = pytz.timezone('America/Managua')
     fecha_actual_nic = datetime.now(tz_nicaragua).date()
     
     col1, col2 = st.columns([3, 1])
-    with col1: st.markdown("<h1 style='margin:0; font-size: 32px;'>Consola Data-Driven <span style='color: #2fe47a;'>WC 26</span></h1>", unsafe_allow_html=True)
+    with col1: st.markdown("<h1 style='margin:0; font-size: 32px;'>Consola Predicciones <span style='color: #2fe47a;'>WC 26</span></h1>", unsafe_allow_html=True)
     with col2: st.markdown(f"<div style='background-color: #1f2937; padding: 10px; border-radius: 20px; text-align: center; color: #9ca3af;'>📅 {fecha_actual_nic.strftime('%d %b %Y')} (NIC)</div>", unsafe_allow_html=True)
     
     st.markdown("---")
     
-    # ------------------------------------------
-    # DASHBOARD DE ESTADÍSTICAS GLOBALES
-    # ------------------------------------------
-    st.subheader("📈 Rendimiento Global del Modelo")
+    st.subheader("📉 Auditoría de Machine Learning")
     
     partidos_finalizados = df[df['Estado'] == "FINALIZADO"]
-    
-    # CORRECCIÓN: Hardcodeamos los 104 partidos oficiales del formato Mundial 2026
     total_juegos_oficiales = 104 
     juegos_listos = len(partidos_finalizados)
     juegos_pendientes = total_juegos_oficiales - juegos_listos
     
     aciertos = 0
     for idx, row in partidos_finalizados.iterrows():
-        _, _, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
+        _, _, pred_l, pred_v = predecir_partido_avanzado(row['Local'], row['Visita'])
         if evaluar_acierto(row['G_L'], row['G_V'], pred_l, pred_v):
             aciertos += 1
             
@@ -194,9 +229,9 @@ if menu == "📡 Tablero en Vivo":
 
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     kpi1.metric("Partidos Totales", total_juegos_oficiales)
-    kpi2.metric("Pendientes / En Vivo", juegos_pendientes)
-    kpi3.metric("Juegos Analizados", juegos_listos)
-    kpi4.metric("Precisión (1X2)", f"{tasa_acierto:.1f}%")
+    kpi2.metric("Pendientes", juegos_pendientes)
+    kpi3.metric("Juegos Entrenados", juegos_listos)
+    kpi4.metric("Precisión Ajustada", f"{tasa_acierto:.1f}%")
     
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -212,24 +247,23 @@ if menu == "📡 Tablero en Vivo":
         st.info("No hay partidos programados para hoy ni mañana.")
     else:
         for idx, row in partidos_agenda.iterrows():
-            # Volvemos a los emojis para que los títulos funcionen bien
             flag_l = obtener_bandera(row['Local'])
             flag_v = obtener_bandera(row['Visita'])
             titulo = f"{row['Fecha_Raw'][-5:]} | {flag_l} {row['Local']}  {row['G_L']} - {row['G_V']}  {row['Visita']} {flag_v}  ({row['Estado']})"
             
             with st.expander(titulo):
-                xg_l, xg_v, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
-                prob_l, prob_e, prob_v = calcular_probabilidades_1x2(xg_l, xg_v)
+                xg_l, xg_v, pred_l, pred_v = predecir_partido_avanzado(row['Local'], row['Visita'])
+                prob_l, prob_e, prob_v = calcular_prob_dixon_coles(xg_l, xg_v)
                 
-                st.markdown(f"<h4 style='text-align: center; color: #8b5cf6; font-style: italic;'>🎯 Marcador Predicho: {pred_l} - {pred_v}</h4>", unsafe_allow_html=True)
+                st.markdown(f"<h4 style='text-align: center; color: #8b5cf6; font-style: italic;'>🎯 Marcador Predicho (ML): {pred_l} - {pred_v}</h4>", unsafe_allow_html=True)
                 
                 c1, c2, c3 = st.columns(3)
                 c1.metric(f"XG - {row['Local']}", f"{xg_l:.2f}")
-                c2.metric("Prob. Empate", f"{prob_e:.1f}%")
+                c2.metric("Prob. Empate (Dixon-Coles)", f"{prob_e:.1f}%")
                 c3.metric(f"XG - {row['Visita']}", f"{xg_v:.2f}")
                 
                 barra_html = f"""
-<div style="text-align: left; font-size: 10px; color: #6b7280; margin-bottom: 5px; margin-top: 15px;">PROBABILIDADES DE VICTORIA (1X2)</div>
+<div style="text-align: left; font-size: 10px; color: #6b7280; margin-bottom: 5px; margin-top: 15px;">PROBABILIDADES DE VICTORIA (AJUSTADAS)</div>
 <div style="display: flex; width: 100%; height: 8px; border-radius: 4px; overflow: hidden;">
 <div style="width: {prob_l}%; background-color: #2fe47a;" title="Local: {prob_l:.1f}%"></div>
 <div style="width: {prob_e}%; background-color: #6b7280;" title="Empate: {prob_e:.1f}%"></div>
@@ -247,14 +281,14 @@ if menu == "📡 Tablero en Vivo":
     # SECCIÓN: AUDITORÍA
     # ------------------------------------------
     st.markdown("<br><br>", unsafe_allow_html=True)
-    st.subheader("🎯 Auditoría de Aciertos")
+    st.subheader("🎯 Tracker de Aciertos")
     
     if partidos_finalizados.empty:
         st.warning("Aún no hay partidos finalizados para auditar.")
     else:
         columnas = st.columns(3)
         for col_idx, (idx, row) in enumerate(partidos_finalizados.iterrows()):
-            xg_l, xg_v, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
+            xg_l, xg_v, pred_l, pred_v = predecir_partido_avanzado(row['Local'], row['Visita'])
             acierto = evaluar_acierto(row['G_L'], row['G_V'], pred_l, pred_v)
             
             color_borde = "#10b981" if acierto else "#ef4444"

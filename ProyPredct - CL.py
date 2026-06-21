@@ -5,6 +5,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import numpy as np
+import math
 from datetime import datetime, timedelta
 import pytz
 import json
@@ -22,18 +23,38 @@ st.markdown("""
     header { visibility: hidden; }
     .block-container { padding-top: 2rem; max-width: 1200px; }
     footer {visibility: hidden;}
+    /* Estilos para los expanders (acordeones) */
+    div[data-testid="stExpander"] { background-color: #151a22; border: 1px solid #1f2937; border-radius: 12px; }
+    div[data-testid="stExpander"] > summary { color: #ffffff; font-weight: bold; font-size: 18px; padding: 15px; }
     </style>
     """, unsafe_allow_html=True)
+
+# DICCIONARIO DE BANDERAS (Asociación automática)
+BANDERAS = {
+    "Mexico": "🇲🇽", "South Africa": "🇿🇦", "Argentina": "🇦🇷", "Brazil": "🇧🇷",
+    "United States": "🇺🇸", "Canada": "🇨🇦", "France": "🇫🇷", "England": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    "Spain": "🇪🇸", "Germany": "🇩🇪", "Italy": "🇮🇹", "Portugal": "🇵🇹",
+    "Netherlands": "🇳🇱", "Belgium": "🇧🇪", "Uruguay": "🇺🇾", "Colombia": "🇨🇴",
+    "Chile": "🇨🇱", "Peru": "🇵🇪", "Japan": "🇯🇵", "South Korea": "🇰🇷",
+    "Australia": "🇦🇺", "Morocco": "🇲🇦", "Senegal": "🇸🇳", "Egypt": "🇪🇬",
+    "Nigeria": "🇳🇬", "Saudi Arabia": "🇸🇦", "Iran": "🇮🇷", "Ecuador": "🇪🇨",
+    "Croatia": "🇭🇷", "Switzerland": "🇨🇭", "Denmark": "🇩🇰", "Sweden": "🇸🇪",
+    "Poland": "🇵🇱", "Serbia": "🇷🇸", "Wales": "🏴󠁧󠁢󠁷󠁬󠁳󠁿", "Costa Rica": "🇨🇷",
+    "Panama": "🇵🇦", "Honduras": "🇭🇳", "Jamaica": "🇯🇲", "El Salvador": "🇸🇻",
+    "Guatemala": "🇬🇹", "Nicaragua": "🇳🇮", "Curaçao": "🇨🇼", "Haiti": "🇭🇹",
+    "Trinidad and Tobago": "🇹🇹", "Czechia": "🇨🇿", "Bosnia and Herz.": "🇧🇦",
+    "Paraguay": "🇵🇾", "Scotland": "🏴󠁧󠁢󠁳󠁣󠁴󠁿"
+}
+
+def obtener_bandera(equipo):
+    return BANDERAS.get(equipo, "🏳️") # Bandera blanca si el país no está en la lista
 
 # ==========================================
 # 3. MOTOR DE DATOS (SISTEMA ANTI-CAÍDAS)
 # ==========================================
 def obtener_datos_resilientes(url):
-    """Intenta conectar a la API. Si falla, usa un respaldo local (backup)."""
     archivo_backup = "backup_mundial.json"
-    
     try:
-        # Intentamos conectar a la API oficial (Timeout de 15s para no hacer esperar al usuario)
         respuesta = requests.get(url, timeout=15)
         if respuesta.status_code == 200:
             datos_json = respuesta.json()
@@ -42,20 +63,16 @@ def obtener_datos_resilientes(url):
             else: matches = []
             
             if len(matches) > 0:
-                # GUARDIA: Si hay datos válidos, sobrescribimos el archivo de respaldo local
                 with open(archivo_backup, 'w', encoding='utf-8') as f:
                     json.dump(matches, f)
                 return matches, "🟢 En Vivo (API Oficial)"
-    except Exception as e:
-        pass # Si falla (timeout, error 500, etc.), pasamos de largo a intentar leer el respaldo
+    except Exception: pass
 
-    # PLAN B: Leer desde el disco duro si la API falló
     if os.path.exists(archivo_backup):
         with open(archivo_backup, 'r', encoding='utf-8') as f:
             matches_respaldo = json.load(f)
         return matches_respaldo, "🟡 Modo Offline (Último respaldo local)"
     
-    # Si todo falla y ni siquiera hay respaldo creado:
     return [], "🔴 Servidor caído y sin datos de respaldo."
 
 def conversor_seguro(valor):
@@ -66,12 +83,11 @@ def conversor_seguro(valor):
 
 url_api = "https://worldcup26.ir/get/games"
 
-# Spinner visual para que el usuario sepa que está cargando
 with st.spinner("Sincronizando base de datos..."):
     datos_raw, status = obtener_datos_resilientes(url_api)
 
 if "🔴" in status:
-    st.error("⚠️ El servidor oficial está caído y aún no hemos podido crear un respaldo local. Intenta más tarde.")
+    st.error("⚠️ El servidor oficial está caído. Intenta más tarde.")
     st.stop()
 
 # ==========================================
@@ -115,46 +131,55 @@ def calcular_fuerza(equipo, df_datos):
     if total == 0: return 1.2, 1.2
     return max(g_a / total, 0.5), max(g_r / total, 0.5)
 
+def calcular_probabilidades_1x2(xg_l, xg_v):
+    """Calcula las probabilidades de Gana Local, Empate, Gana Visita"""
+    p_l, p_e, p_v = 0, 0, 0
+    for i in range(10):
+        for j in range(10):
+            prob = (math.exp(-xg_l) * (xg_l**i) / math.factorial(i)) * (math.exp(-xg_v) * (xg_v**j) / math.factorial(j))
+            if i > j: p_l += prob
+            elif i == j: p_e += prob
+            else: p_v += prob
+    total = p_l + p_e + p_v
+    if total == 0: return 33.3, 33.3, 33.3
+    return (p_l/total)*100, (p_e/total)*100, (p_v/total)*100
+
 def predecir_partido(local, visita, df):
     gf_l, gc_l = calcular_fuerza(local, df)
     gf_v, gc_v = calcular_fuerza(visita, df)
     xg_l = (gf_l + gc_v) / 2
     xg_v = (gf_v + gc_l) / 2
-    semilla = sum(ord(c) for c in local + visita)
-    np.random.seed(semilla)
-    pred_l = np.random.poisson(xg_l)
-    pred_v = np.random.poisson(xg_v)
-    return xg_l, xg_v, pred_l, pred_v
+    np.random.seed(sum(ord(c) for c in local + visita))
+    return xg_l, xg_v, np.random.poisson(xg_l), np.random.poisson(xg_v)
 
 def evaluar_acierto(gl_real, gv_real, gl_pred, gv_pred):
     res_real = 'L' if gl_real > gv_real else ('V' if gv_real > gl_real else 'E')
     res_pred = 'L' if gl_pred > gv_pred else ('V' if gv_pred > gl_pred else 'E')
     return res_real == res_pred
 
-def crear_tarjeta_principal(info, xg_l, xg_v, pred_l, pred_v):
-    total_xg = xg_l + xg_v
-    pos_l = int((xg_l / total_xg) * 100) if total_xg > 0 else 50
-    pos_v = 100 - pos_l
-    estado_badge = "#2fe47a" if "PROGRAMADO" not in info['Estado'] else "#6b7280"
+def crear_tarjeta_expandida(info, xg_l, xg_v, pred_l, pred_v):
+    """Genera el contenido interno al dar clic en un partido"""
+    prob_l, prob_e, prob_v = calcular_probabilidades_1x2(xg_l, xg_v)
     
     return f"""
-    <div style="background-color: #151a22; border: 1px solid #1f2937; border-radius: 16px; padding: 30px; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5); margin-bottom: 20px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <div style="background-color: {estado_badge}; color: #000; padding: 4px 16px; border-radius: 20px; font-weight: bold; font-size: 12px;">● {info['Estado']}</div>
-            <div style="color: #6b7280; font-size: 14px; font-weight: bold;">{info['Grupo']} | {info['Fecha_Raw']}</div>
+    <div style="padding: 10px; text-align: center;">
+        <p style="color: #8b5cf6; font-size: 14px; margin-bottom: 20px; font-style: italic;">🎯 Marcador Exacto Predicho: {pred_l} - {pred_v}</p>
+        
+        <div style="display: flex; justify-content: space-around; text-align: center; border-top: 1px solid #1f2937; border-bottom: 1px solid #1f2937; padding: 15px 0; margin-bottom: 20px;">
+            <div><h3 style="margin: 0; font-size: 20px; color: #2fe47a;">{xg_l:.2f}</h3><span style="color: #6b7280; font-size: 10px;">XG LOCAL</span></div>
+            <div><h3 style="margin: 0; font-size: 20px; color: #fff;">{prob_e:.1f}%</h3><span style="color: #6b7280; font-size: 10px;">PROB. EMPATE</span></div>
+            <div><h3 style="margin: 0; font-size: 20px; color: #2fe47a;">{xg_v:.2f}</h3><span style="color: #6b7280; font-size: 10px;">XG VISITA</span></div>
         </div>
-        <div style="display: flex; justify-content: space-between; align-items: center; text-align: center; margin: 40px 0;">
-            <div style="width: 30%;"><h2 style="margin: 0; font-size: 24px;">{info['Local']}</h2></div>
-            <div style="width: 40%;">
-                <h1 style="margin: 0; font-size: 64px; font-weight: 900; line-height: 1;">{info['G_L']} - {info['G_V']}</h1>
-                <p style="color: #8b5cf6; font-size: 14px; margin-top: 10px; font-style: italic;">🔮 Predicción: {pred_l} - {pred_v}</p>
-            </div>
-            <div style="width: 30%;"><h2 style="margin: 0; font-size: 24px;">{info['Visita']}</h2></div>
+        
+        <div style="text-align: left; font-size: 10px; color: #6b7280; margin-bottom: 5px;">PROBABILIDADES DE VICTORIA (1X2)</div>
+        <div style="display: flex; width: 100%; height: 8px; border-radius: 4px; overflow: hidden;">
+            <div style="width: {prob_l}%; background-color: #2fe47a;" title="Local: {prob_l:.1f}%"></div>
+            <div style="width: {prob_e}%; background-color: #6b7280;" title="Empate: {prob_e:.1f}%"></div>
+            <div style="width: {prob_v}%; background-color: #3b82f6;" title="Visita: {prob_v:.1f}%"></div>
         </div>
-        <div style="display: flex; justify-content: space-around; text-align: center; border-top: 1px solid #1f2937; padding-top: 20px;">
-            <div><h3 style="margin: 0; font-size: 24px; color: #2fe47a;">{xg_l:.2f}</h3><span style="color: #6b7280; font-size: 10px;">XG</span></div>
-            <div><h3 style="margin: 0; font-size: 24px; color: #fff;">{pos_l}% - {pos_v}%</h3><span style="color: #6b7280; font-size: 10px;">POSESIÓN</span></div>
-            <div><h3 style="margin: 0; font-size: 24px; color: #2fe47a;">{xg_v:.2f}</h3><span style="color: #6b7280; font-size: 10px;">XG</span></div>
+        <div style="display: flex; justify-content: space-between; font-size: 10px; color: #fff; margin-top: 5px;">
+            <span>{prob_l:.1f}% (L)</span>
+            <span>{prob_v:.1f}% (V)</span>
         </div>
     </div>
     """
@@ -163,7 +188,7 @@ def crear_tarjeta_principal(info, xg_l, xg_v, pred_l, pred_v):
 # 5. SIDEBAR - NAVEGACIÓN
 # ==========================================
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/d/d4/FIFA_World_Cup_2026_Logo.png/800px-FIFA_World_Cup_2026_Logo.png", width=150)
-st.sidebar.markdown(f"<p style='color: #9ca3af; font-size: 12px; text-align: center;'>Estado de conexión:<br>{status}</p>", unsafe_allow_html=True)
+st.sidebar.markdown(f"<p style='color: #9ca3af; font-size: 12px; text-align: center;'>Estado:<br>{status}</p>", unsafe_allow_html=True)
 menu = st.sidebar.radio("Navegación", ["📡 En vivo", "📅 Calendario", "📊 Posiciones"])
 
 # ==========================================
@@ -176,27 +201,34 @@ if menu == "📡 En vivo":
     fecha_manana_nic = fecha_actual_nic + timedelta(days=1)
     
     col1, col2 = st.columns([3, 1])
-    with col1:
-        st.markdown("<h1 style='margin:0; font-size: 32px;'>Mundial 2026 — <span style='color: #2fe47a;'>Autopilot</span></h1>", unsafe_allow_html=True)
-    with col2:
-        st.markdown(f"<div style='background-color: #1f2937; padding: 10px; border-radius: 20px; text-align: center; color: #9ca3af;'>📅 {fecha_actual_nic.strftime('%d %b %Y')}</div>", unsafe_allow_html=True)
+    with col1: st.markdown("<h1 style='margin:0; font-size: 32px;'>Mundial 2026 — <span style='color: #2fe47a;'>Autopilot</span></h1>", unsafe_allow_html=True)
+    with col2: st.markdown(f"<div style='background-color: #1f2937; padding: 10px; border-radius: 20px; text-align: center; color: #9ca3af;'>📅 {fecha_actual_nic.strftime('%d %b %Y')}</div>", unsafe_allow_html=True)
 
     st.markdown("---")
-    
     st.subheader("🗓️ Partidos en Agenda (Hoy y Mañana)")
+    
     df['Solo_Fecha'] = df['Fecha_Obj'].dt.date
     partidos_agenda = df[(df['Solo_Fecha'] == fecha_actual_nic) | (df['Solo_Fecha'] == fecha_manana_nic)]
     
     if partidos_agenda.empty:
-        st.info(f"No hay partidos programados para el {fecha_actual_nic.strftime('%d/%m')} ni para el {fecha_manana_nic.strftime('%d/%m')} en la base de datos.")
+        st.info(f"No hay partidos programados para hoy ni mañana en la base de datos.")
     else:
         for idx, row in partidos_agenda.iterrows():
-            xg_l, xg_v, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
-            st.markdown(crear_tarjeta_principal(row, xg_l, xg_v, pred_l, pred_v), unsafe_allow_html=True)
+            # Obtener banderas
+            flag_l = obtener_bandera(row['Local'])
+            flag_v = obtener_bandera(row['Visita'])
+            
+            # Formatear el título comprimido del expander
+            titulo_comprimido = f"{row['Fecha_Raw'][-5:]} | {flag_l} {row['Local']}  {row['G_L']} - {row['G_V']}  {row['Visita']} {flag_v}  ({row['Estado']})"
+            
+            # Crear el acordeón interactivo
+            with st.expander(titulo_comprimido):
+                xg_l, xg_v, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
+                st.markdown(crear_tarjeta_expandida(row, xg_l, xg_v, pred_l, pred_v), unsafe_allow_html=True)
 
     st.markdown("<br><br>", unsafe_allow_html=True)
     st.subheader("🎯 Auditoría del Modelo Predictivo")
-    st.markdown("<p style='color: #9ca3af;'>Se evalúa si el modelo acertó al ganador o al empate de los partidos ya finalizados.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='color: #9ca3af;'>Historial de aciertos en ganadores y empates.</p>", unsafe_allow_html=True)
     
     partidos_finalizados = df[df['Estado'] == "FINALIZADO"]
     
@@ -204,19 +236,19 @@ if menu == "📡 En vivo":
         st.warning("Aún no hay partidos finalizados para auditar.")
     else:
         columnas = st.columns(3)
-        col_idx = 0
-        
-        for idx, row in partidos_finalizados.iterrows():
+        for col_idx, (idx, row) in enumerate(partidos_finalizados.iterrows()):
             xg_l, xg_v, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
             acierto = evaluar_acierto(row['G_L'], row['G_V'], pred_l, pred_v)
             
             color_borde = "#10b981" if acierto else "#ef4444"
             icono = "✅ ACIERTO" if acierto else "❌ FALLO"
+            flag_l = obtener_bandera(row['Local'])
+            flag_v = obtener_bandera(row['Visita'])
             
             tarjeta_historial = f"""
             <div style="background-color: #111827; border-left: 4px solid {color_borde}; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
                 <div style="font-size: 12px; color: #9ca3af; margin-bottom: 5px;">{row['Fecha_Raw'][:10]} | {row['Grupo']}</div>
-                <div style="font-weight: bold; font-size: 16px;">{row['Local']} {row['G_L']} - {row['G_V']} {row['Visita']}</div>
+                <div style="font-weight: bold; font-size: 16px;">{flag_l} {row['Local']} {row['G_L']} - {row['G_V']} {row['Visita']} {flag_v}</div>
                 <div style="display: flex; justify-content: space-between; margin-top: 10px; font-size: 12px;">
                     <span style="color: #8b5cf6;">Predicción: {pred_l}-{pred_v}</span>
                     <span style="color: {color_borde}; font-weight: bold;">{icono}</span>
@@ -224,7 +256,6 @@ if menu == "📡 En vivo":
             </div>
             """
             columnas[col_idx % 3].markdown(tarjeta_historial, unsafe_allow_html=True)
-            col_idx += 1
 
 else:
     st.info("Pestaña en construcción. Selecciona 'En vivo'.")

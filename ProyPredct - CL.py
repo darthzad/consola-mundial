@@ -102,27 +102,41 @@ def calcular_estadisticas_equipo(equipo, df):
 # ==========================================
 # 5. PROCESAMIENTO Y LIMPIEZA DE DATOS
 # ==========================================
+def obtener_nombre(diccionario, claves_principales):
+    """Busca el nombre del equipo sin importar cómo lo haya escrito el dueño de la API"""
+    for clave in claves_principales:
+        equipo = diccionario.get(clave)
+        if isinstance(equipo, dict):
+            return equipo.get('nameEn', equipo.get('name', 'TBD'))
+        elif isinstance(equipo, str):
+            return equipo
+    return "TBD"
+
 def conversor_seguro(valor):
-    """Intenta convertir a número; si es texto o vacío, devuelve None sin estrellarse"""
     try:
-        return int(valor)
+        return int(float(valor))
     except (ValueError, TypeError):
         return None
 
 lista_limpia = []
 for m in datos_raw:
-    h_name = m.get('home_team', {}).get('nameEn', m.get('home_team', {}).get('name', 'TBD'))
-    a_name = m.get('away_team', {}).get('nameEn', m.get('away_team', {}).get('name', 'TBD'))
+    # El creador puede usar snake_case (home_team) o camelCase (homeTeam)
+    h_name = obtener_nombre(m, ['home_team', 'homeTeam', 'home'])
+    a_name = obtener_nombre(m, ['away_team', 'awayTeam', 'away'])
+    
+    # Ignoramos filas que estén completamente vacías o corruptas
+    if h_name == "TBD" and a_name == "TBD":
+        continue
     
     lista_limpia.append({
         "Fecha": m.get('localDate', m.get('date', 'TBD')),
         "Partido": f"{h_name} vs {a_name}",
-        "Grupo": m.get('group', 'N/A'),
+        "Grupo": m.get('group', m.get('groupId', 'N/A')),
         "Estado": m.get('status', m.get('matchStatus', 'N/A')),
         "Local": h_name, 
         "Visita": a_name,
-        "G_L": conversor_seguro(m.get('home_score')), 
-        "G_V": conversor_seguro(m.get('away_score'))
+        "G_L": conversor_seguro(m.get('home_score', m.get('homeScore'))), 
+        "G_V": conversor_seguro(m.get('away_score', m.get('awayScore')))
     })
 
 df = pd.DataFrame(lista_limpia)

@@ -184,4 +184,96 @@ if menu == "📡 Tablero en Vivo":
     
     aciertos = 0
     for idx, row in partidos_finalizados.iterrows():
-        _, _, pred_l, pred
+        _, _, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
+        if evaluar_acierto(row['G_L'], row['G_V'], pred_l, pred_v):
+            aciertos += 1
+            
+    tasa_acierto = (aciertos / juegos_listos * 100) if juegos_listos > 0 else 0.0
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Partidos Totales", total_juegos)
+    kpi2.metric("Pendientes / En Vivo", juegos_pendientes)
+    kpi3.metric("Juegos Analizados", juegos_listos)
+    kpi4.metric("Precisión (1X2)", f"{tasa_acierto:.1f}%")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ------------------------------------------
+    # SECCIÓN: PARTIDOS DE HOY Y MAÑANA (ACORDEONES)
+    # ------------------------------------------
+    st.subheader("🗓️ Partidos en Agenda (Próximas 48 hrs)")
+    fecha_manana_nic = fecha_actual_nic + timedelta(days=1)
+    df['Solo_Fecha'] = df['Fecha_Obj'].dt.date
+    partidos_agenda = df[(df['Solo_Fecha'] == fecha_actual_nic) | (df['Solo_Fecha'] == fecha_manana_nic)]
+    
+    if partidos_agenda.empty:
+        st.info("No hay partidos programados para hoy ni mañana.")
+    else:
+        for idx, row in partidos_agenda.iterrows():
+            flag_l = obtener_bandera(row['Local'])
+            flag_v = obtener_bandera(row['Visita'])
+            titulo = f"{row['Fecha_Raw'][-5:]} | {flag_l} {row['Local']}  {row['G_L']} - {row['G_V']}  {row['Visita']} {flag_v}  ({row['Estado']})"
+            
+            with st.expander(titulo):
+                xg_l, xg_v, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
+                prob_l, prob_e, prob_v = calcular_probabilidades_1x2(xg_l, xg_v)
+                
+                # Renderizado limpio sin errores HTML
+                st.markdown(f"<h4 style='text-align: center; color: #8b5cf6; font-style: italic;'>🎯 Marcador Predicho: {pred_l} - {pred_v}</h4>", unsafe_allow_html=True)
+                
+                c1, c2, c3 = st.columns(3)
+                c1.metric(f"XG - {row['Local']}", f"{xg_l:.2f}")
+                c2.metric("Prob. Empate", f"{prob_e:.1f}%")
+                c3.metric(f"XG - {row['Visita']}", f"{xg_v:.2f}")
+                
+                # Barra de probabilidades formateada a la izquierda (Sin espacios iniciales)
+                barra_html = f"""
+<div style="text-align: left; font-size: 10px; color: #6b7280; margin-bottom: 5px; margin-top: 15px;">PROBABILIDADES DE VICTORIA (1X2)</div>
+<div style="display: flex; width: 100%; height: 8px; border-radius: 4px; overflow: hidden;">
+<div style="width: {prob_l}%; background-color: #2fe47a;" title="Local: {prob_l:.1f}%"></div>
+<div style="width: {prob_e}%; background-color: #6b7280;" title="Empate: {prob_e:.1f}%"></div>
+<div style="width: {prob_v}%; background-color: #3b82f6;" title="Visita: {prob_v:.1f}%"></div>
+</div>
+<div style="display: flex; justify-content: space-between; font-size: 12px; font-weight: bold; margin-top: 5px;">
+<span style="color: #2fe47a;">{prob_l:.1f}% (L)</span>
+<span style="color: #6b7280;">{prob_e:.1f}% (E)</span>
+<span style="color: #3b82f6;">{prob_v:.1f}% (V)</span>
+</div>
+"""
+                st.markdown(barra_html, unsafe_allow_html=True)
+
+    # ------------------------------------------
+    # SECCIÓN: AUDITORÍA
+    # ------------------------------------------
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.subheader("🎯 Auditoría de Aciertos")
+    
+    if partidos_finalizados.empty:
+        st.warning("Aún no hay partidos finalizados para auditar.")
+    else:
+        columnas = st.columns(3)
+        for col_idx, (idx, row) in enumerate(partidos_finalizados.iterrows()):
+            xg_l, xg_v, pred_l, pred_v = predecir_partido(row['Local'], row['Visita'], df)
+            acierto = evaluar_acierto(row['G_L'], row['G_V'], pred_l, pred_v)
+            
+            color_borde = "#10b981" if acierto else "#ef4444"
+            icono = "✅ ACIERTO" if acierto else "❌ FALLO"
+            flag_l = obtener_bandera(row['Local'])
+            flag_v = obtener_bandera(row['Visita'])
+            
+            # HTML formateado a la izquierda
+            tarjeta_historial = f"""
+<div style="background-color: #111827; border-left: 4px solid {color_borde}; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+<div style="font-size: 12px; color: #9ca3af; margin-bottom: 5px;">{row['Fecha_Raw'][:10]} | {row['Grupo']}</div>
+<div style="font-weight: bold; font-size: 16px;">{flag_l} {row['Local']} {row['G_L']} - {row['G_V']} {row['Visita']} {flag_v}</div>
+<div style="display: flex; justify-content: space-between; margin-top: 10px; font-size: 12px;">
+<span style="color: #8b5cf6;">Pred: {pred_l}-{pred_v}</span>
+<span style="color: {color_borde}; font-weight: bold;">{icono}</span>
+</div>
+</div>
+"""
+            columnas[col_idx % 3].markdown(tarjeta_historial, unsafe_allow_html=True)
+
+else:
+    st.title("Base de Datos Histórica")
+    st.dataframe(df.drop(columns=['Fecha_Obj']), use_container_width=True)
